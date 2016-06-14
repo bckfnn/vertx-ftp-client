@@ -6,20 +6,15 @@ import java.util.regex.Pattern;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Handler;
 
-public class CmdPasv extends Cmd<CmdPasv> {
+public class ResponsePasv extends Response<ResponsePasv> {
 	public int port;
 	
-	public CmdPasv(Handler<AsyncResult<CmdPasv>> handler) {
-		this.handler = handler;
+	public ResponsePasv(Handler<AsyncResult<ResponsePasv>> handler) {
+		super(handler);
 	}
 	
 	@Override
-	public void send(FtpClient client) {
-		client.write("PASV");
-	}
-	
-	@Override
-	public void recieve(FtpClient client) {
+	public void handle(FtpClient client) {
 		if (code.equals("227")) {
 			Pattern p = Pattern.compile(".*\\((\\d+),(\\d+),(\\d+),(\\d+),(\\d+),(\\d+)\\).*");
 			Matcher m = p.matcher(messages.get(0));
