@@ -72,10 +72,10 @@ public class FtpClient {
 					data.appendBuffer(b);
 				});
 				datasocket.endHandler(b -> {
-					System.out.println("end");
+					log.debug("end");
 				});
 				datasocket.exceptionHandler(e -> {
-					System.out.println(e);
+					log.error("error", e);
 				});
 			});
 			write(new CmdList(Flow.with(handler, list -> {
@@ -89,7 +89,6 @@ public class FtpClient {
 		write(new CmdPasv(Flow.with(handler, pasv -> {
 			client.connect(pasv.port, host, res -> {
 				NetSocket datasocket = res.result();
-				System.out.println("data connection");
 				Pump.pump(datasocket, localFile).start();
 			});
 			write(new CmdRetr(file, Flow.with(handler, list -> {
@@ -105,7 +104,7 @@ public class FtpClient {
 	
 	
 	public void write(String line) {
-		log.info(">{}", line);
+		log.trace(">{}", line);
 		socket.write(line + "\r\n");
 	}
 	
@@ -119,7 +118,7 @@ public class FtpClient {
 
 		if (m.matches()) {
 			String code = m.group(1);
-			log.debug(code + " " + m.group(2) + " " + m.group(3));
+			log.trace(code + " " + m.group(2) + " " + m.group(3));
 			if (code.equals("421")) {
 				socket.close();
 				endHandler.handle(null);
@@ -135,7 +134,7 @@ public class FtpClient {
 			if (m.group(2).equals(" ")) {
 				Cmd<?> cmd = this.cmd;
 				this.cmd = null;
-				log.info("handling {}", cmd);
+				log.trace("handling {}", cmd);
 				cmd.recieve(this);
 			} else if (m.group(2).equals("-")) {
 				log.info("waiting for more");

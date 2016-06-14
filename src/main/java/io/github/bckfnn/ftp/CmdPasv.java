@@ -23,7 +23,6 @@ public class CmdPasv extends Cmd<CmdPasv> {
 		if (code.equals("227")) {
 			Pattern p = Pattern.compile(".*\\((\\d+),(\\d+),(\\d+),(\\d+),(\\d+),(\\d+)\\).*");
 			Matcher m = p.matcher(messages.get(0));
-			System.out.println(m + " " + m.matches());
 			if (m.matches()) {
 				port = Integer.parseInt(m.group(5)) * 256 + Integer.parseInt(m.group(6));
 				succes(this);
