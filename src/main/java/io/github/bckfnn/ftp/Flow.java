@@ -14,12 +14,8 @@ import org.slf4j.LoggerFactory;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
-import io.vertx.core.Vertx;
 import io.vertx.core.streams.ReadStream;
 
-/*
- * Copyright 2016 [inno:vasion]
- */
 public class Flow {
     private static final Logger log = LoggerFactory.getLogger(Flow.class);
 
@@ -33,7 +29,7 @@ public class Flow {
         };
     }
 
-    public static <T, R> Handler<AsyncResult<T>> withValue(Handler<AsyncResult<R>> handler, Function<T, R> func) {
+    public static <T, R> Handler<AsyncResult<T>> with(Handler<AsyncResult<R>> handler, Function<T, R> func) {
         return ar -> {
             if (ar.succeeded()) {
                 handler.handle(Future.succeededFuture(func.apply(ar.result())));
@@ -42,8 +38,6 @@ public class Flow {
             }
         };
     }
-    
-
 
     public static <T, R> Handler<AsyncResult<T>> ignoreError(Consumer<T> func) {
         return ar -> {
@@ -51,19 +45,6 @@ public class Flow {
         };
     }
 
-   
-    public static <T> void blocking(Vertx vertx, SupplierExc<T> func, Handler<AsyncResult<T>> handler) {
-        vertx.executeBlocking(fut -> {
-            try {
-                fut.complete(func.get());
-            } catch (Throwable e) {
-                e.printStackTrace();
-                fut.fail(e);
-            }
-        }, handler);
-    }
-
-    
     public static RuntimeException rethrow(Throwable t) {
         if (t.getCause() != null) {
             t = t.getCause();

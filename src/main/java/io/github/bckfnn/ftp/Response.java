@@ -7,27 +7,21 @@ import io.vertx.core.AsyncResult;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
 
-public abstract class Response<T extends Response<T>> {
+public class Response {
     protected String code;
     protected List<String> messages = new ArrayList<>();
-    final private Handler<AsyncResult<T>> handler;
-
-    public Response(Handler<AsyncResult<T>> handler) {
+    Handler<AsyncResult<Response>> handler;
+    
+    public Response(Handler<AsyncResult<Response>> handler) {
         this.handler = handler;
     }
 
-    public abstract void handle(FtpClient client);
-    
     public void setCode(String code) {
         this.code = code;
     }
 
     public String getCode() {
         return code;
-    }
-    
-    public Handler<AsyncResult<T>> getHandler() {
-        return handler;
     }
     
     public void addMessage(String message) {
@@ -40,11 +34,13 @@ public abstract class Response<T extends Response<T>> {
 
     public void fail(String msg) {
         handler.handle(Future.failedFuture(new RuntimeException(msg)));
-
     }
 
-    public void succes(T response) {
-        handler.handle(Future.succeededFuture(response));
+    public void fail() {
+        handler.handle(Future.failedFuture(new RuntimeException(code + " " + messages.get(0))));
+    }
 
+    public void succes() {
+        handler.handle(Future.succeededFuture(this));
     }
 }
