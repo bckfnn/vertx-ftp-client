@@ -1,6 +1,7 @@
 package io.github.bckfnn.ftp;
 
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -39,16 +40,10 @@ public class FtpClient {
     }
 
     public void connect(Handler<AsyncResult<Void>> handler) {
-        next = Flow.with(handler, c -> {
-            switch (c.getCode()) {
-            case "220":
-                handler.handle(Future.succeededFuture());
-                break;
-            default:
-                c.fail();
-                break;
-            }
-        });
+        next = resp(handler, when("220", c -> {
+            handler.handle(Future.succeededFuture());
+        }));
+
         client = vertx.createNetClient();
         client.connect(port, host, res -> {
             socket = res.result();
@@ -64,121 +59,71 @@ public class FtpClient {
 
 
     public void login(String user, String passwd, Handler<AsyncResult<Void>> handler) {
-        write("USER " + user, Flow.with(handler, u -> {
-            switch (u.getCode()) {
-            case "230":
-                handler.handle(Future.succeededFuture());
-                break;
-            case "331":
-            case "332":
-                write("PASS " + passwd, Flow.with(handler, p -> {
-                    switch (p.getCode()) {
-                    case "230":
-                    case "202":
-                        handler.handle(Future.succeededFuture());
-                        break;
-                    default:
-                        p.fail();
-                        break;
-                    }
-                }));
-                break;
-            default:
-                u.fail();
-            }
-        }));
+        write("USER " + user, resp(handler,
+                when("230", u -> {
+                    handler.handle(Future.succeededFuture());
+                }),
+                when("331", "332", u -> {
+                    write("PASS " + passwd, resp(handler, 
+                            when("230", "202", p -> {
+                                handler.handle(Future.succeededFuture());
+                            })));
+                })));
     }
 
     public void list(Handler<AsyncResult<Buffer>> handler) {
         Buffer data = Buffer.buffer();
 
-        write("PASV", Flow.with(handler, pasv -> {
-            switch (pasv.getCode()) {
-            case "227":
-                int port = pasvPort(pasv);
-                client.connect(port, host, res -> {
-                    NetSocket datasocket = res.result();
-                    datasocket.handler(b -> {
-                        data.appendBuffer(b);
+        write("PASV", resp(handler, 
+                when("227", pasv -> {
+                    int port = pasvPort(pasv);
+                    client.connect(port, host, res -> {
+                        NetSocket datasocket = res.result();
+                        datasocket.handler(b -> {
+                            data.appendBuffer(b);
+                        });
+                        datasocket.endHandler(b -> {
+                            log.debug("end");
+                        });
+                        datasocket.exceptionHandler(e -> {
+                            log.error("error", e);
+                        });
                     });
-                    datasocket.endHandler(b -> {
-                        log.debug("end");
-                    });
-                    datasocket.exceptionHandler(e -> {
-                        log.error("error", e);
-                    });
-                });
-                write("LIST", Flow.with(handler, list -> {
-                    switch (list.getCode()) {
-                    case "150":
-                        handle(Flow.with(handler, listdone -> {
-                            switch (listdone.getCode()) {
-                            case "226":
-                                System.out.println("list handler called");
-                                handler.handle(Future.succeededFuture(data));
-                                break;
-                            default:
-                                handler.handle(Future.failedFuture(listdone.getCode()));
-                                break;
-                            }
-                        }));
-                        break;
-                    default:
-                        handler.handle(Future.failedFuture(list.getCode()));
-                        break;
-                    }
-                }));
-                break;
-            default:
-                pasv.fail();
-                break;
-            }
-        }));
+                    write("LIST", resp(handler, 
+                            when("125", "150", list -> {
+                                handle(resp(handler, 
+                                        when("226", "250", listdone -> {
+                                            handler.handle(Future.succeededFuture(data));
+                                        })));
+                            })));
+
+                })));
     }
 
     public void retr(String file, AsyncFile localFile, Handler<AsyncResult<Void>> handler) {
         AtomicInteger ends = new AtomicInteger(0);
-        write("PASV", Flow.with(handler, pasv -> {
-            switch (pasv.getCode()) {
-            case "227":
-                int port = pasvPort(pasv);
-                client.connect(port, host, res -> {
-                    NetSocket datasocket = res.result();
-                    datasocket.endHandler($ -> {
-                        if (ends.incrementAndGet() == 2) {
-                            handler.handle(Future.succeededFuture());
-                        }
-                    });
-                    Pump.pump(datasocket, localFile).start();
-                });
-                write("RETR " + file, Flow.with(handler, retr -> {
-                    switch (retr.getCode()) {
-                    case "150":
-                        handle(Flow.with(handler, listdone -> {
-                            switch (listdone.getCode()) {
-                            case "226":
-                                if (ends.incrementAndGet() == 2) {
-                                    handler.handle(Future.succeededFuture());
-                                }
-                                break;
-                            default:
-                                handler.handle(Future.failedFuture(listdone.getCode()));
-                                break;
+        write("PASV", resp(handler,
+                when("227", pasv -> {
+                    int port = pasvPort(pasv);
+                    client.connect(port, host, res -> {
+                        NetSocket datasocket = res.result();
+                        datasocket.endHandler($ -> {
+                            if (ends.incrementAndGet() == 2) {
+                                handler.handle(Future.succeededFuture());
                             }
-                        }));
-                        break;
-                    default:
-                        handler.handle(Future.failedFuture(retr.getCode()));
-                        break;
-                    }
-
-                }));
-                break;
-            default:
-                pasv.fail();
-                break;
-            }
-        }));
+                        });
+                        Pump.pump(datasocket, localFile).start();
+                    });
+                    write("RETR " + file, resp(handler,
+                            when("125", "150", retr -> {
+                                handle(resp(handler, 
+                                        when("226", "250", listdone -> {
+                                            if (ends.incrementAndGet() == 2) {
+                                                handler.handle(Future.succeededFuture());
+                                            }
+                                        })));
+                            })));
+                })));
     }
 
     public void write(String cmd, Handler<AsyncResult<Response>> handler) {
@@ -240,7 +185,7 @@ public class FtpClient {
         }
         throw new RuntimeException("xx");
     }
-    
+
     public static void main(String[] args) throws Exception {
         Vertx vertx = Vertx.vertx();
         FtpClient client = new FtpClient(vertx, "speedtest.tele2.net", 21);
@@ -259,6 +204,48 @@ public class FtpClient {
                 });
             });
         });
+    }
 
+    public static <R> Handler<AsyncResult<Response>> resp(Handler<AsyncResult<R>> handler, When... whens) {
+        return ar -> {
+            if (ar.succeeded()) {
+                Response r = ar.result();
+                for (When w : whens) {
+                    if (w.match(r)) {
+                        return;
+                    }
+                }
+                handler.handle(Future.failedFuture(r.code + " " + r.messages.get(0)));
+            } else {
+                handler.handle(Future.failedFuture(ar.cause()));
+            }
+        };
+    }
+
+    public static When when(String code, Consumer<Response> func) {
+        return new When(func, code);
+    }
+
+    public static When when(String code1, String code2, Consumer<Response> func) {
+        return new When(func, code1, code2);
+    }
+
+    private static class When {
+        String[] codes;
+        Consumer<Response> func;
+        
+        public When(Consumer<Response> func, String... codes) {
+            this.codes = codes;
+            this.func = func;
+        }
+        public boolean match(Response r) {
+            for (String code : codes) {
+                if (r.getCode().equals(code)) {
+                    func.accept(r);
+                    return true;
+                }
+            }
+            return false;
+        }
     }
 }
