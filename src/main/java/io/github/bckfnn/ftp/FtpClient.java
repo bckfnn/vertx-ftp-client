@@ -150,7 +150,7 @@ public class FtpClient {
 			client.login("anonymous", "passwd", $2 -> {
 				client.list($ -> {
 					System.out.println("list " + $.result());
-					vertx.fileSystem().open("tmp.zip", new OpenOptions().setWrite(true).setTruncateExisting(true), arfile -> {
+					vertx.fileSystem().open("target/tmp.zip", new OpenOptions().setWrite(true).setTruncateExisting(true), arfile -> {
 						client.retr("512KB.zip", arfile.result(), $3 -> {
 							arfile.result().close($5 -> {
 								System.out.println("retr");
