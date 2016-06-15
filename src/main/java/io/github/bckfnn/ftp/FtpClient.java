@@ -29,7 +29,6 @@ import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.file.AsyncFile;
-import io.vertx.core.file.OpenOptions;
 import io.vertx.core.net.NetClient;
 import io.vertx.core.net.NetSocket;
 import io.vertx.core.parsetools.RecordParser;
@@ -46,7 +45,7 @@ public class FtpClient {
     private Handler<Void> endHandler = $ -> {};
 
     private Response response = null;
-    Handler<AsyncResult<Response>> next;
+    private Handler<AsyncResult<Response>> next;
 
     public FtpClient(Vertx vertx, String host, int port) {
         this.vertx = vertx;
@@ -141,25 +140,25 @@ public class FtpClient {
                 })));
     }
 
-    public void write(String cmd, Handler<AsyncResult<Response>> handler) {
+    private void write(String cmd, Handler<AsyncResult<Response>> handler) {
         this.next = handler;
         write(cmd);
     }
 
-    public void handle(Handler<AsyncResult<Response>> handler) {
+    private void handle(Handler<AsyncResult<Response>> handler) {
         this.next = handler;
     }
 
-    public void write(String line) {
+    private void write(String line) {
         log.debug(">{}", line);
         socket.write(line + "\r\n");
     }
 
-    public void fail(String msg) {
+    private void fail(String msg) {
         throw new RuntimeException(msg);
     }
 
-    public void output(Buffer buf) {
+    private void output(Buffer buf) {
         if (response == null) {
             response = new Response(next);
         }
