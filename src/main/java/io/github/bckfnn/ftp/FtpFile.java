@@ -76,10 +76,13 @@ public class FtpFile {
 		}
 	}
 
-	public static List<FtpFile> listing(String listing) throws Exception {
+	public static List<FtpFile> listing(String listing) {
 		List<FtpFile> ret  = new ArrayList<>();
 
 		for (String f : listing.split("\n")) {
+			if (f.endsWith("\r")) {
+				f = f.substring(0, f.length() - 1);
+			}
 			FtpFile file = FtpFile.from(f.toString());
 
 			if (file == null) {
@@ -94,7 +97,8 @@ public class FtpFile {
 		return ret;
 	}
 
-
-
+	@Override
+	public String toString() {
+		return "FtpFile [type=" + type + ", name=" + name + ", size=" + size + ", date=" + date + "]";
+	}
 }
-

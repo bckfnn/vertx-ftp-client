@@ -15,11 +15,15 @@
  */
 package io.github.bckfnn.ftp;
 
+import java.util.function.BiConsumer;
+import java.util.function.Consumer;
+
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
 import io.vertx.core.Vertx;
+import io.vertx.core.file.OpenOptions;
 
 public class FtpClientTele2Test {
 	static Vertx vertx;
@@ -36,41 +40,77 @@ public class FtpClientTele2Test {
 	
 	@Test
 	public void testLogin() {
-		HandlerLatch<Void> latch = new HandlerLatch<>();
-		FtpClient client = new FtpClient(vertx, "speedtest.tele2.net", 21);
-		client.connect(a -> {
-			if (latch.failed(a)) {
-				return;
-			}
-			client.login("anonymous", "passwd", login -> {
-				if (latch.failed(login)) {
-					return;
-				}
-				latch.countDown();
-			});
+		login("speedtest.tele2.net", "anonymous", "passwd", (client, latch) -> {
+			latch.countDown();
 		});
-		latch.await();
 	}
 	
 	@Test
 	public void testList() {
+		login("speedtest.tele2.net", "anonymous", "passwd", (client, latch) -> {
+			client.list(list -> {
+				if (latch.failed(list)) {
+					return;
+				}
+                System.out.println("list " + list.result());
+				latch.countDown();
+            });
+		});
+	}
+	
+	
+	@Test
+	public void testListParsed() {
+		login("speedtest.tele2.net", "anonymous", "passwd", (client, latch) -> {
+			client.list(list -> {
+				if (latch.failed(list)) {
+					return;
+				}
+				for (FtpFile f : FtpFile.listing(list.result().toString())) {
+	                System.out.println(f);					
+				}
+
+				latch.countDown();
+            });
+		});
+	}
+	
+	@Test
+	public void testRetr() {
+		login("speedtest.tele2.net", "anonymous", "passwd", (client, latch) -> {
+            vertx.fileSystem().open("target/tmp.zip", new OpenOptions().setWrite(true).setTruncateExisting(true), arfile -> {
+            	if (latch.failed(arfile)) {
+					return;
+				}
+                client.retr("512KB.zip", arfile.result(), retr -> {
+                	if (latch.failed(retr)) {
+    					return;
+    				}
+                    arfile.result().close(close -> {
+                    	if (latch.failed(close)) {
+        					return;
+        				}
+                    	latch.countDown();
+                    });
+                });
+
+            });
+        });
+    }
+	
+	private void login(String host, String user, String pass, BiConsumer<FtpClient, HandlerLatch<Void>> handler) {
 		HandlerLatch<Void> latch = new HandlerLatch<>();
-		FtpClient client = new FtpClient(vertx, "speedtest.tele2.net", 21);
-		client.connect(a -> {
-			if (latch.failed(a)) {
+		
+		FtpClient client = new FtpClient(vertx, host, 21);
+		client.connect(connect -> {
+			if (latch.failed(connect)) {
 				return;
 			}
-			client.login("anonymous", "passwd", login -> {
+			client.login(user, pass, login -> {
 				if (latch.failed(login)) {
 					return;
 				}
-				client.list(list -> {
-					if (latch.failed(list)) {
-						return;
-					}
-                    System.out.println("list " + list.result());
-    				latch.countDown();
-                });
+				handler.accept(client, latch);
 			});
 		});
 		latch.await();

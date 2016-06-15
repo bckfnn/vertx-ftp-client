@@ -201,25 +201,6 @@ public class FtpClient {
         throw new RuntimeException("xx");
     }
 
-    public static void main(String[] args) throws Exception {
-        Vertx vertx = Vertx.vertx();
-        FtpClient client = new FtpClient(vertx, "speedtest.tele2.net", 21);
-        client.connect(a -> {
-            client.login("anonymous", "passwd", $2 -> {
-                client.list($ -> {
-                    System.out.println("list " + $.result());
-                    vertx.fileSystem().open("target/tmp.zip", new OpenOptions().setWrite(true).setTruncateExisting(true), arfile -> {
-                        client.retr("512KB.zip", arfile.result(), $3 -> {
-                            arfile.result().close($5 -> {
-                                System.out.println("retr");
-                            });
-                        });
-
-                    });
-                });
-            });
-        });
-    }
 
     public static <R> Handler<AsyncResult<Response>> resp(Handler<AsyncResult<R>> handler, When... whens) {
         return ar -> {
