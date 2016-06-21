@@ -16,6 +16,7 @@
 package io.github.bckfnn.ftp;
 
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -33,6 +34,11 @@ import io.vertx.core.net.NetClient;
 import io.vertx.core.net.NetSocket;
 import io.vertx.core.parsetools.RecordParser;
 
+/**
+ * Main FtpClient class to use when sending commands to a FTP server.
+ * 
+ * @see https://www.ietf.org/rfc/rfc959.txt
+ */
 public class FtpClient {
     private static Logger log = LoggerFactory.getLogger(FtpClient.class);
 
@@ -46,12 +52,22 @@ public class FtpClient {
     private Response response = null;
     private Handler<AsyncResult<Response>> next;
 
+    /**
+     * Create a ftp client which connects to the specified host and port.
+     * @param vertx the vertx instance to use for creating connections.
+     * @param host the host where the FTP server is running.
+     * @param port the port on the FTP server.
+     */
     public FtpClient(Vertx vertx, String host, int port) {
         this.vertx = vertx;
         this.host = host;
         this.port = port;
     }
 
+    /**
+     * Connect to the server.
+     * @param handler callback handler that is called when the connection is completed.
+     */
     public void connect(Handler<AsyncResult<Void>> handler) {
         next = resp(handler, when("220", c -> {
             handler.handle(Future.succeededFuture());
@@ -70,7 +86,12 @@ public class FtpClient {
         });
     }
 
-
+    /**
+     * Perform a login on the FTP server using the specified user name and password.
+     * @param user the user name
+     * @param passwd the password
+     * @param handler callback handler that is called when the login is completed.
+     */
     public void login(String user, String passwd, Handler<AsyncResult<Void>> handler) {
         write("USER " + user, resp(handler,
                 when("230", u -> {
@@ -87,6 +108,7 @@ public class FtpClient {
     public void list(Handler<AsyncResult<Buffer>> handler) {
         Buffer data = Buffer.buffer();
 
+ 
         write("PASV", resp(handler, 
                 when("227", pasv -> {
                     int port = pasvPort(pasv);
@@ -223,6 +245,17 @@ public class FtpClient {
     private void write(String line) {
         log.debug(">{}", line);
         socket.write(line + "\r\n");
+    }
+
+    private void pasv(Handler<NetSocket> dataConnection, Handler<AsyncResult<Void>> handler) {
+        write("PASV", resp(handler,
+                when("227", pasv -> {
+                    int port = pasvPort(pasv);
+                    client.connect(port, host, res -> {
+                        NetSocket datasocket = res.result();
+                        dataConnection.handle(datasocket);
+                    });
+                })));
     }
 
     private void fail(String msg) {
