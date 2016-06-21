@@ -32,7 +32,6 @@ import io.vertx.core.file.AsyncFile;
 import io.vertx.core.net.NetClient;
 import io.vertx.core.net.NetSocket;
 import io.vertx.core.parsetools.RecordParser;
-import io.vertx.core.streams.Pump;
 
 public class FtpClient {
     private static Logger log = LoggerFactory.getLogger(FtpClient.class);
@@ -114,7 +113,7 @@ public class FtpClient {
                 })));
     }
 
-    public void retr(String file, AsyncFile localFile, Handler<AsyncResult<Void>> handler) {
+    public void retr(String file, AsyncFile localFile, Handler<Progress> progress, Handler<AsyncResult<Void>> handler) {
         AtomicInteger ends = new AtomicInteger(0);
         write("PASV", resp(handler,
                 when("227", pasv -> {
@@ -126,7 +125,9 @@ public class FtpClient {
                                 handler.handle(Future.succeededFuture());
                             }
                         });
-                        Pump.pump(datasocket, localFile).start();
+                        new ProgressPump(datasocket, localFile, pumped -> {
+                            progress.handle(new Progress(this, pumped));
+                        }).start();
                     });
                     write("RETR " + file, resp(handler,
                             when("125", "150", retr -> {
@@ -137,6 +138,76 @@ public class FtpClient {
                                             }
                                         })));
                             })));
+                })));
+    }
+    
+    public void stor(String file, AsyncFile localFile, Handler<Progress> progress, Handler<AsyncResult<Void>> handler) {
+        AtomicInteger ends = new AtomicInteger(0);
+        write("PASV", resp(handler,
+                when("227", pasv -> {
+                    int port = pasvPort(pasv);
+                    client.connect(port, host, res -> {
+                        NetSocket datasocket = res.result();
+                        datasocket.endHandler($ -> {
+                            if (ends.incrementAndGet() == 2) {
+                                handler.handle(Future.succeededFuture());
+                            }
+                        });
+                        new ProgressPump(localFile, datasocket, pumped -> {
+                            progress.handle(new Progress(this, pumped));
+                        }).start();
+                    });
+                    write("STOR " + file, resp(handler,
+                            when("125", "150", retr -> {
+                                handle(resp(handler, 
+                                        when("226", "250", listdone -> {
+                                            if (ends.incrementAndGet() == 2) {
+                                                handler.handle(Future.succeededFuture());
+                                            }
+                                        })));
+                            })));
+                })));
+    }
+    
+    public void dele(String file, Handler<AsyncResult<Void>> handler) {
+        write("DELE " + file, resp(handler,
+                when("250", pasv -> {
+                    handler.handle(Future.succeededFuture());
+                })));
+    }
+
+    public void cwd(String dir, Handler<AsyncResult<Void>> handler) {
+        write("CWD " + dir, resp(handler,
+                when("250", pasv -> {
+                    handler.handle(Future.succeededFuture());
+                })));
+    }
+
+    public void cdup(Handler<AsyncResult<Void>> handler) {
+        write("CDUP", resp(handler,
+                when("200", pasv -> {
+                    handler.handle(Future.succeededFuture());
+                })));
+    }
+
+    public void rmd(String dir, Handler<AsyncResult<Void>> handler) {
+        write("RMD " + dir, resp(handler,
+                when("250", pasv -> {
+                    handler.handle(Future.succeededFuture());
+                })));
+    }
+    
+    public void mkd(String dir, Handler<AsyncResult<Void>> handler) {
+        write("MKD " + dir, resp(handler,
+                when("257", pasv -> {
+                    handler.handle(Future.succeededFuture());
+                })));
+    }
+    
+    public void quit(Handler<AsyncResult<Void>> handler) {
+        write("QUIT", resp(handler,
+                when("200", pasv -> {
+                    handler.handle(Future.succeededFuture());
                 })));
     }
 

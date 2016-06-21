@@ -16,7 +16,6 @@
 package io.github.bckfnn.ftp;
 
 import java.util.function.BiConsumer;
-import java.util.function.Consumer;
 
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
@@ -82,7 +81,7 @@ public class FtpClientTele2Test {
             	if (latch.failed(arfile)) {
 					return;
 				}
-                client.retr("512KB.zip", arfile.result(), retr -> {
+                client.retr("512KB.zip", arfile.result(), progress -> {}, retr -> {
                 	if (latch.failed(retr)) {
     					return;
     				}
