@@ -37,7 +37,7 @@ import io.vertx.core.streams.WriteStream;
 /**
  * Main FtpClient class to use when sending commands to a FTP server.
  * 
- * @href https://www.ietf.org/rfc/rfc959.txt
+ * @see <a href="https://www.ietf.org/rfc/rfc959.txt">FTP RFC</a>
  */
 public class FtpClient {
     private static Logger log = LoggerFactory.getLogger(FtpClient.class);
