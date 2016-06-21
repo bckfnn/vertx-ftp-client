@@ -16,7 +16,6 @@
 package io.github.bckfnn.ftp;
 
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -29,15 +28,16 @@ import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
-import io.vertx.core.file.AsyncFile;
 import io.vertx.core.net.NetClient;
 import io.vertx.core.net.NetSocket;
 import io.vertx.core.parsetools.RecordParser;
+import io.vertx.core.streams.ReadStream;
+import io.vertx.core.streams.WriteStream;
 
 /**
  * Main FtpClient class to use when sending commands to a FTP server.
  * 
- * @see https://www.ietf.org/rfc/rfc959.txt
+ * @href https://www.ietf.org/rfc/rfc959.txt
  */
 public class FtpClient {
     private static Logger log = LoggerFactory.getLogger(FtpClient.class);
@@ -105,99 +105,117 @@ public class FtpClient {
                 })));
     }
 
+    /**
+     * Perform a list file and directories of the current working directory. 
+     * @param handler callback handler that is called when the list is completed.
+     */
     public void list(Handler<AsyncResult<Buffer>> handler) {
+        list(null, handler);
+    }
+
+    /**
+     * Perform a list of the file or directories specifed by path. 
+     * @param path the path to list.
+     * @param handler callback handler that is called when the list is completed.
+     */
+    public void list(String path, Handler<AsyncResult<Buffer>> handler) {
         Buffer data = Buffer.buffer();
 
- 
-        write("PASV", resp(handler, 
-                when("227", pasv -> {
-                    int port = pasvPort(pasv);
-                    client.connect(port, host, res -> {
-                        NetSocket datasocket = res.result();
-                        datasocket.handler(b -> {
-                            data.appendBuffer(b);
-                        });
-                        datasocket.endHandler(b -> {
-                            log.debug("end");
-                        });
-                        datasocket.exceptionHandler(e -> {
-                            log.error("error", e);
-                        });
-                    });
-                    write("LIST", resp(handler, 
-                            when("125", "150", list -> {
-                                handle(resp(handler, 
-                                        when("226", "250", listdone -> {
-                                            handler.handle(Future.succeededFuture(data));
-                                        })));
-                            })));
-
-                })));
+        pasv(handler, datasocket -> {
+            datasocket.handler(b -> {
+                data.appendBuffer(b);
+            });
+        }, $ -> {
+            write("LIST" + (path != null ? " " +path :""), resp(handler, 
+                    when("125", "150", list -> {
+                        handle(resp(handler, 
+                                when("226", "250", listdone -> {
+                                    handler.handle(Future.succeededFuture(data));
+                                })));
+                    })));
+        });
     }
 
-    public void retr(String file, AsyncFile localFile, Handler<Progress> progress, Handler<AsyncResult<Void>> handler) {
+    /**
+     * Perform a retrive (download)  of the file by path. 
+     * @param path the path to list.
+     * @param localFile an asyncFile where the download file will be written
+     * @param progress a progress handler that is called for each part that is recieved.
+     * @param handler callback handler that is called when the list is completed.
+     */
+    public void retr(String path, WriteStream<Buffer> localFile, Handler<Progress> progress, Handler<AsyncResult<Void>> handler) {
         AtomicInteger ends = new AtomicInteger(0);
-        write("PASV", resp(handler,
-                when("227", pasv -> {
-                    int port = pasvPort(pasv);
-                    client.connect(port, host, res -> {
-                        NetSocket datasocket = res.result();
-                        datasocket.endHandler($ -> {
-                            if (ends.incrementAndGet() == 2) {
-                                handler.handle(Future.succeededFuture());
-                            }
-                        });
-                        new ProgressPump(datasocket, localFile, pumped -> {
-                            progress.handle(new Progress(this, pumped));
-                        }).start();
-                    });
-                    write("RETR " + file, resp(handler,
-                            when("125", "150", retr -> {
-                                handle(resp(handler, 
-                                        when("226", "250", listdone -> {
-                                            if (ends.incrementAndGet() == 2) {
-                                                handler.handle(Future.succeededFuture());
-                                            }
-                                        })));
-                            })));
-                })));
+        pasv(handler, datasocket -> {
+            datasocket.endHandler($ -> {
+                if (ends.incrementAndGet() == 2) {
+                    handler.handle(Future.succeededFuture());
+                }
+            });
+            new ProgressPump(datasocket, localFile, pumped -> {
+                progress.handle(new Progress(this, pumped));
+            }).start();
+        }, $ -> {
+            write("RETR " + path, resp(handler,
+                    when("125", "150", retr -> {
+                        handle(resp(handler, 
+                                when("226", "250", listdone -> {
+                                    if (ends.incrementAndGet() == 2) {
+                                        handler.handle(Future.succeededFuture());
+                                    }
+                                })));
+                    })));
+        });
     }
-    
-    public void stor(String file, AsyncFile localFile, Handler<Progress> progress, Handler<AsyncResult<Void>> handler) {
+
+    /**
+     * Perform a store (upload) to the file of path. 
+     * @param path the path to upload to.
+     * @param localFile an asyncFile where the download file will be written
+     * @param progress a progress handler that is called for each part that is recieved.
+     * @param handler callback handler that is called when the list is completed.
+     */
+    public void stor(String path, ReadStream<Buffer> localFile, Handler<Progress> progress, Handler<AsyncResult<Void>> handler) {
         AtomicInteger ends = new AtomicInteger(0);
-        write("PASV", resp(handler,
-                when("227", pasv -> {
-                    int port = pasvPort(pasv);
-                    client.connect(port, host, res -> {
-                        NetSocket datasocket = res.result();
-                        datasocket.endHandler($ -> {
-                            if (ends.incrementAndGet() == 2) {
-                                handler.handle(Future.succeededFuture());
-                            }
-                        });
-                        new ProgressPump(localFile, datasocket, pumped -> {
-                            progress.handle(new Progress(this, pumped));
-                        }).start();
-                    });
-                    write("STOR " + file, resp(handler,
-                            when("125", "150", retr -> {
-                                handle(resp(handler, 
-                                        when("226", "250", listdone -> {
-                                            if (ends.incrementAndGet() == 2) {
-                                                handler.handle(Future.succeededFuture());
-                                            }
-                                        })));
-                            })));
-                })));
+        pasv(handler, datasocket -> {
+            localFile.endHandler($ -> {
+                datasocket.close();
+                if (ends.incrementAndGet() == 2) {
+                    handler.handle(Future.succeededFuture());
+                }
+            });
+            new ProgressPump(localFile, datasocket, pumped -> {
+                progress.handle(new Progress(this, pumped));
+            }).start();
+        }, $ -> {
+            write("STOR " + path, resp(handler,
+                    when("125", "150", retr -> {
+                        handle(resp(handler, 
+                                when("226", "250", listdone -> {
+                                    if (ends.incrementAndGet() == 2) {
+                                        handler.handle(Future.succeededFuture());
+                                    }
+                                })));
+                    })));
+        });
     }
-    
-    public void dele(String file, Handler<AsyncResult<Void>> handler) {
-        write("DELE " + file, resp(handler,
+
+    /**
+     * Perform a delete on the server. 
+     * @param path the path to upload to.
+     * @param handler callback handler that is called when the list is completed.
+     */
+    public void dele(String path, Handler<AsyncResult<Void>> handler) {
+        write("DELE " + path, resp(handler,
                 when("250", pasv -> {
                     handler.handle(Future.succeededFuture());
                 })));
     }
 
+    /**
+     * Perform a change directory on the server. 
+     * @param dir the directory to change into.
+     * @param handler callback handler that is called when the list is completed.
+     */
     public void cwd(String dir, Handler<AsyncResult<Void>> handler) {
         write("CWD " + dir, resp(handler,
                 when("250", pasv -> {
@@ -218,14 +236,14 @@ public class FtpClient {
                     handler.handle(Future.succeededFuture());
                 })));
     }
-    
+
     public void mkd(String dir, Handler<AsyncResult<Void>> handler) {
         write("MKD " + dir, resp(handler,
                 when("257", pasv -> {
                     handler.handle(Future.succeededFuture());
                 })));
     }
-    
+
     public void quit(Handler<AsyncResult<Void>> handler) {
         write("QUIT", resp(handler,
                 when("200", pasv -> {
@@ -247,7 +265,7 @@ public class FtpClient {
         socket.write(line + "\r\n");
     }
 
-    private void pasv(Handler<NetSocket> dataConnection, Handler<AsyncResult<Void>> handler) {
+    private <T> void pasv(Handler<AsyncResult<T>> handler, Handler<NetSocket> dataConnection, Handler<Void> cmd) {
         write("PASV", resp(handler,
                 when("227", pasv -> {
                     int port = pasvPort(pasv);
@@ -255,6 +273,7 @@ public class FtpClient {
                         NetSocket datasocket = res.result();
                         dataConnection.handle(datasocket);
                     });
+                    cmd.handle(null);
                 })));
     }
 
@@ -332,7 +351,7 @@ public class FtpClient {
     private static class When {
         String[] codes;
         Consumer<Response> func;
-        
+
         public When(Consumer<Response> func, String... codes) {
             this.codes = codes;
             this.func = func;

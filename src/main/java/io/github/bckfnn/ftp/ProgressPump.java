@@ -45,6 +45,7 @@ public class ProgressPump implements Pump {
     ProgressPump(ReadStream<Buffer> rs, WriteStream<Buffer> ws, Handler<Integer> progress) {
         this.readStream = rs;
         this.writeStream = ws;
+        this.progress = progress;
         drainHandler = v-> readStream.resume();
         dataHandler = data -> {
             writeStream.write(data);
